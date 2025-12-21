@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function getUserData(appId, userId) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/users/$(userId)).data;
+    }
+
+    function isSuperAdmin(appId) {
+      // Check if user is signed in and if their role in Firestore is 'superadmin'
+      return isSignedIn() && getUserData(appId, request.auth.uid).role == 'superadmin';
+    }
+
+    function isEditorOrHigher(appId) {
+      let userRole = getUserData(appId, request.auth.uid).role;
+      return isSignedIn() && (userRole == 'admin' || userRole == 'superadmin');
+    }
+
+    // Rules for the users collection
+    match /artifacts/{appId}/users/{userId} {
+      // Allow users to create their own user document.
+      // Superadmins can create any user document (for the admin panel).
+      allow create: if (isSignedIn() && isOwner(userId)) || isSuperAdmin(appId);
+      
+      // Allow users to read their own document. Superadmins can read any document.
+      allow get: if isSignedIn() && (isOwner(userId) || isSuperAdmin(appId));
+      
+      // Allow superadmins to list all users.
+      allow list: if isSignedIn() && isSuperAdmin(appId);
+      
+      // Allow superadmins to update any user document. 
+      // Users (admins/viewers) can only update their own password change timestamp, not their role.
+      allow update: if isSignedIn() && (
+        isSuperAdmin(appId) ||
+        (isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['passwordLastChangedAt']))
+      );
+      
+      // Allow superadmin to delete any user except themselves.
+      allow delete: if isSuperAdmin(appId) && request.auth.uid != userId;
+    }
+
+    // Rules for the centralized 'batizados' collection
+    match /artifacts/{appId}/batizados/{baptismId} {
+      // Allow any signed-in user to read any baptism record.
+      allow read: if isSignedIn();
+      // Allow only 'admin' or 'superadmin' to write (create, update, delete).
+      allow write: if isEditorOrHigher(appId);
+    }
+  }
+}
