@@ -1,9 +1,1 @@
-﻿# batism
-
-# Firebase Studio
-
-This project was initialized with Firebase Studio.
-
-This is a NextJS starter in Firebase Studio.
-
-To get started, take a look at src/app/page.tsx.
+# batism
